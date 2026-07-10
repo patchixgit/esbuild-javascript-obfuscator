@@ -2,16 +2,20 @@
 	"name": "esbuild-javascript-obfuscator",
 	"version": "1.0.0",
 	"description": "An esbuild plugin to obfuscate JavaScript code.",
+	
 	"author": {
 		"name": "Patchix"
 	},
+
 	"license": "MIT",
+
 	"keywords": [
 		"esbuild",
 		"esbuild-plugin",
 		"javascript-obfuscator",
 		"obfuscator"
 	],
+
 	"type": "module",
 	"main": "./dist/index.js",
 	"module": "./dist/index.js",
@@ -19,6 +23,7 @@
 	"files": [
 		"dist"
 	],
+
 	"scripts": {
 		"clean": "rm -rf dist",
 		"build:js": "bun build ./src/index.ts --outdir ./dist --target node",
@@ -27,15 +32,27 @@
 		"prettier": "prettier --write .",
 		"prepublishOnly": "bun run build"
 	},
+
 	"dependencies": {
 		"esbuild": "^0.28.1",
 		"javascript-obfuscator": "^5.4.5"
 	},
+
 	"devDependencies": {
 		"@types/bun": "latest",
 		"prettier": "^3.9.4"
 	},
+
 	"peerDependencies": {
 		"typescript": "^5"
+	},
+
+	"repository": {
+		"url": "https://github.com/patchixgit/esbuild-javascript-obfuscator.git",
+		"type": "git"
+	},
+
+	"bugs": {
+		"url": "https://github.com/patchixgit/esbuild-javascript-obfuscator/issues"
 	}
 }

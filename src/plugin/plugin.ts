@@ -8,9 +8,11 @@ import type { JSObfuscatorOptions } from '../types/JSObfuscatorOptions';
 import { ValidateOptions } from './optionValidator';
 import { CreateLogger } from '../logging';
 
+type FinalizedFiles = { fileName: string; outputCode: string }[];
+
 async function ObfuscateFile(
 	pluginOptions: JSObfuscatorOptions,
-	finalized: { fileName: string; outputCode: string }[],
+	finalized: FinalizedFiles,
 	file: esbuild.OutputFile,
 ): Promise<boolean> {
 	const logger = CreateLogger(pluginOptions);
@@ -53,8 +55,6 @@ async function ObfuscateFile(
 
 	finalized.push({ fileName: file.path, outputCode: obfuscateResult.getObfuscatedCode().toString() });
 
-	console.log(finalized);
-
 	logger('obfuscation completed for file: ', file.path);
 
 	return true;
@@ -62,7 +62,7 @@ async function ObfuscateFile(
 
 export function JSObfuscatorPlugin(options: JSObfuscatorOptions) {
 	const log = CreateLogger(options);
-	const finalized: { fileName: string; outputCode: string }[] = [];
+	const finalized: FinalizedFiles = [];
 
 	log('JSObfuscatorPlugin initialized with options:', options);
 
@@ -81,7 +81,7 @@ export function JSObfuscatorPlugin(options: JSObfuscatorOptions) {
 		name: 'esbuild-javascript-obfuscator',
 
 		setup(build) {
-			if (build.initialOptions.write) {
+			if (build.initialOptions.write || build.initialOptions.write === undefined) {
 				throw new Error('esbuild-javascript-obfuscator plugin requires write: false in build options');
 			}
 

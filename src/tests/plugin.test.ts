@@ -19,6 +19,12 @@ const ObfuscationOptions = {
 };
 
 function CreateDummyFiles() {
+	function cleanup() {
+		fs.rmSync(path.join(__dirname, 'temp'), { recursive: true, force: true });
+	}
+
+	cleanup(); /* needs to be called incase other tests failed and left the temp folder behind */
+
 	fs.mkdirSync(path.join(__dirname, 'temp'));
 
 	fs.writeFileSync(
@@ -28,9 +34,7 @@ function CreateDummyFiles() {
         `,
 	);
 
-	return function cleanup() {
-		fs.rmSync(path.join(__dirname, 'temp'), { recursive: true, force: true });
-	};
+	return cleanup;
 }
 
 test('plugin should throw error when write: true', async () => {
@@ -41,6 +45,21 @@ test('plugin should throw error when write: true', async () => {
 			entryPoints: [path.join(__dirname, 'temp', 'index.ts')],
 			bundle: true,
 			write: true,
+			minify: true,
+			plugins: [JSObfuscatorPlugin(ObfuscationOptions)],
+		}),
+	).rejects.toThrow(`esbuild-javascript-obfuscator plugin requires write: false in build options`);
+
+	cleanup();
+});
+
+test('plugin should throw error when write option is not provided', async () => {
+	const cleanup = CreateDummyFiles();
+
+	expect(
+		esbuild.build({
+			entryPoints: [path.join(__dirname, 'temp', 'index.ts')],
+			bundle: true,
 			minify: true,
 			plugins: [JSObfuscatorPlugin(ObfuscationOptions)],
 		}),

@@ -1,6 +1,6 @@
 {
 	"name": "esbuild-javascript-obfuscator",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "An esbuild plugin to obfuscate JavaScript code.",
 	
 	"author": {

@@ -11,117 +11,120 @@ import { CreateLogger } from '../logging';
 type FinalizedFiles = { fileName: string; outputCode: string }[];
 
 async function ObfuscateFile(
-	pluginOptions: JSObfuscatorOptions,
-	finalized: FinalizedFiles,
-	file: esbuild.OutputFile,
-): Promise<boolean> {
-	const logger = CreateLogger(pluginOptions);
+    pluginOptions: JSObfuscatorOptions,
+    file: esbuild.OutputFile,
+): Promise<string> {
+    const logger = CreateLogger(pluginOptions);
+    const originalCode = new TextDecoder().decode(file.contents);
 
-	if (!file.path.endsWith('.js')) {
-		logger('file does not end with .js, skipping obfuscation: ', file.path);
-		return false;
-	}
+    if (!file.path.endsWith('.js')) {
+        logger('file does not end with .js, skipping obfuscation: ', file.path);
+        return originalCode;
+    }
 
-	if (pluginOptions.VMProtection.Enabled) {
-		const { ApiKey, Version } = pluginOptions.VMProtection;
+    if (pluginOptions.VMProtection?.Enabled) {
+        const { ApiKey, Version } = pluginOptions.VMProtection;
 
-		logger('obfuscating with VM Protection ... ');
+        logger('obfuscating with VM Protection ... ');
 
-		const proApiOptions: JsObf.IProApiConfig = {
-			apiToken: ApiKey! /* must exist because of optionValidator */,
-		};
+        const proApiOptions: JsObf.IProApiConfig = {
+            apiToken: ApiKey! /* must exist because of optionValidator */,
+        };
 
-		if (Version) {
-			Reflect.set(proApiOptions, 'version', Version);
-		}
+        if (Version) {
+            Reflect.set(proApiOptions, 'version', Version);
+        }
 
-		const obfuscateResult = await JsObf.obfuscatePro(
-			new TextDecoder().decode(file.contents),
-			pluginOptions.ObfuscatorOptions,
-			proApiOptions,
-			logger,
-		);
+        const obfuscateResult = await JsObf.obfuscatePro(
+            originalCode,
+            pluginOptions.ObfuscatorOptions,
+            proApiOptions,
+            logger,
+        );
 
-		finalized.push({ fileName: file.path, outputCode: obfuscateResult.getObfuscatedCode().toString() });
+        logger('obfuscation with VM Protection completed for file: ', file.path);
+        return obfuscateResult.getObfuscatedCode().toString();
+    }
 
-		logger('obfuscation with VM Protection completed for file: ', file.path);
+    logger('obfuscating with no VM protection...');
 
-		return true;
-	}
+    const obfuscateResult = JsObf.obfuscate(originalCode, pluginOptions.ObfuscatorOptions);
 
-	logger('obfusacting with no VM protection...');
-
-	const obfuscateResult = JsObf.obfuscate(new TextDecoder().decode(file.contents), pluginOptions.ObfuscatorOptions);
-
-	finalized.push({ fileName: file.path, outputCode: obfuscateResult.getObfuscatedCode().toString() });
-
-	logger('obfuscation completed for file: ', file.path);
-
-	return true;
+    logger('obfuscation completed for file: ', file.path);
+    return obfuscateResult.getObfuscatedCode().toString();
 }
 
 export function JSObfuscatorPlugin(options: JSObfuscatorOptions) {
-	const log = CreateLogger(options);
-	const finalized: FinalizedFiles = [];
+    const log = CreateLogger(options);
 
-	log('JSObfuscatorPlugin initialized with options:', options);
+    log('JSObfuscatorPlugin initialized with options:', options);
 
-	const [isValid, errorMsg] = ValidateOptions(options);
-	log('isValid: ', isValid, ' errorMsg: ', errorMsg);
+    const [isValid, errorMsg] = ValidateOptions(options);
+    log('isValid: ', isValid, ' errorMsg: ', errorMsg);
 
-	if (!isValid) {
-		throw new Error(`Invalid JSObfuscatorPlugin options: ${errorMsg || 'no error message provided'}`);
-	}
+    if (!isValid) {
+        throw new Error(`Invalid JSObfuscatorPlugin options: ${errorMsg || 'no error message provided'}`);
+    }
 
-	log('creating plugin');
+    log('creating plugin');
 
-	const obfuscateFile = ObfuscateFile.bind(null, options, finalized);
+    return {
+        name: 'esbuild-javascript-obfuscator',
 
-	return {
-		name: 'esbuild-javascript-obfuscator',
+        setup(build) {
+            if (build.initialOptions.write || build.initialOptions.write === undefined) {
+                throw new Error('esbuild-javascript-obfuscator plugin requires write: false in build options');
+            }
 
-		setup(build) {
-			if (build.initialOptions.write || build.initialOptions.write === undefined) {
-				throw new Error('esbuild-javascript-obfuscator plugin requires write: false in build options');
-			}
+            build.onEnd(async ({ errors, outputFiles }) => {
+                if (errors.length) {
+                    log('build completed with errors, skipping obfuscation (errors: %f)', errors.length);
+                    return;
+                }
 
-			build.onEnd(async ({ errors, outputFiles }) => {
-				if (errors.length) {
-					log('build completed with errors, skipping obfuscation (errors: %f)', errors.length);
-					return;
-				}
+                if (!outputFiles) {
+                    log('No output files found, skipping obfuscation');
+                    return;
+                }
 
-				if (!outputFiles) {
-					log('No output files found, skipping obfuscation');
-					return;
-				}
+				/* keep this here: on `watch` modes, this can cause a memory leak if not placed in this certain way.*/
+                const finalized: FinalizedFiles = [];
 
-				if (outputFiles.length > 1 && !options.ObfuscateAllFiles) {
-					throw new Error('outputFiles.length > 1 but ObfuscateAllFiles not explicitly set');
-				}
+                for (const file of outputFiles) {
+                    const fileName = path.basename(file.path);
 
-				if (outputFiles.length > 1 && options.ObfuscateAllFiles) {
-					for (const file of outputFiles) {
-						const success = await obfuscateFile(file);
+                    const shouldObfuscate =
+                        options.ObfuscateAllFiles || (options.ObfuscateFilesWhitelist?.includes(fileName) ?? false);
 
-						if (!success) {
-							log('failed to obfuscate file: ', file.path);
-						}
-					}
-				} else {
-					const file = outputFiles[0];
-					const success = await obfuscateFile(file!);
-					if (!success) {
-						log('failed to obfuscate file: ', file!.path);
-					}
-				}
+                    if (shouldObfuscate && file.path.endsWith('.js')) {
+                        try {
+                            const outputCode = await ObfuscateFile(options, file);
+							/* write obfuscated output */
+                            finalized.push({ fileName: file.path, outputCode });
+                        } catch (err) {
+                            log('failed to obfuscate file: ', file.path, err);
 
-				/* write pass */
-				for (const outputFile of finalized) {
-					fs.mkdirSync(path.dirname(outputFile.fileName), { recursive: true });
-					fs.writeFileSync(outputFile.fileName, outputFile.outputCode);
-				}
-			});
-		},
-	} as esbuild.Plugin;
+							/* it failed, so just write the original file to the output */
+							finalized.push({
+                                fileName: file.path,
+                                outputCode: new TextDecoder().decode(file.contents),
+                            });
+                        }
+                    } else {
+						/* should not obfuscate, write orig file. */
+                        finalized.push({
+                            fileName: file.path,
+                            outputCode: new TextDecoder().decode(file.contents),
+                        });
+                    }
+                }
+
+                /* write pass */
+                for (const outputFile of finalized) {
+                    fs.mkdirSync(path.dirname(outputFile.fileName), { recursive: true });
+                    fs.writeFileSync(outputFile.fileName, outputFile.outputCode);
+                }
+            });
+        },
+    } as esbuild.Plugin;
 }
